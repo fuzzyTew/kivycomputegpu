@@ -1,0 +1,3 @@
+title=GPU
+author=Author
+orientation=portrait
