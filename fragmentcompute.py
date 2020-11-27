@@ -6,14 +6,51 @@
 # fbo is a rendercontext. so we can likely
 # pass a shader to it
 
-from kivy.graphics import Callback, Color, Fbo, Rectangle
+from kivy.graphics import BindTexture, Callback, Color, Fbo, Rectangle
 import kivy.graphics.opengl as gl
 from kivy.graphics.texture import Texture
 from kivy.graphics.transformation import Matrix
 from kivy.logger import Logger
 
+default_vs = """
+    #ifdef GL_ES
+        precision highp float;
+    #endif
+    
+    /* Outputs to the fragment shader */
+    varying vec2 tex_coord0;
+    
+    /* vertex attributes */
+    attribute vec2     vPosition;
+    attribute vec2     vTexCoords0;
+    
+    /* uniform variables */
+    uniform mat4       projection_mat;
+    void main (void) {
+        tex_coord0 = vTexCoords0;
+        gl_Position = projection_mat * vec4(vPosition.xy, 0.0, 1.0);
+    }
+"""
+
+header_fs = """
+    #ifdef GL_ES
+        precision highp float;
+    #endif
+
+    /* Outputs from the vertex shader */
+    varying vec4 frag_color;
+    varying vec2 tex_coord0;
+
+    /* uniform variables */
+    uniform mat4 frag_coord2idx;
+    uniform mat4 frag_coord2ratio;
+
+    /* uniform texture samplers */
+    uniform sampler2D last_tex;
+"""
+
 class FragmentCompute:
-    def __init__(self, length1, length2 = 1):
+    def __init__(self, fs, length1, length2 = 1):
         size = (length1, length2)
 
         # it doesn't look like we can use float textures on mobile kivy, but people sometimes interconvert floats with 32bit rgba in shaders.
@@ -27,48 +64,9 @@ class FragmentCompute:
         self._fbo = Fbo(
             size = size,
             texture = texture,
-            vs = """
-            #ifdef GL_ES
-                precision highp float;
-            #endif
-            
-            /* Outputs to the fragment shader */
-            varying vec2 tex_coord0;
-            
-            /* vertex attributes */
-            attribute vec2     vPosition;
-            attribute vec2     vTexCoords0;
-            
-            /* uniform variables */
-            uniform mat4       projection_mat;
-            void main (void) {
-                tex_coord0 = vTexCoords0;
-                gl_Position = projection_mat * vec4(vPosition.xy, 0.0, 1.0);
-            }
-            """,
-            fs = """
-            #ifdef GL_ES
-                precision highp float;
-            #endif
-
-            /* Outputs from the vertex shader */
-            varying vec4 frag_color;
-            varying vec2 tex_coord0;
-
-            /* uniform texture samplers */
-            uniform sampler2D texture0;
-
-            /* uniform variables */
-            uniform mat4 frag_coord2idx;
-            uniform mat4 frag_coord2ratio;
-
-            void main (void){
-                vec2 idxs = (frag_coord2idx * gl_FragCoord).xy;
-                vec2 ratios = (frag_coord2ratio * gl_FragCoord).xy;
-                vec4 lastcol = texture2D(texture0, ratios);
-                gl_FragColor = vec4(idxs.x, ratios.x, lastcol.b + 0.125, 0.0);
-            }
-            """)
+            vs = default_vs,
+            fs = header_fs + fs, 
+        )
 
         # these matrices are to transform
         # window coordinates into data
@@ -83,7 +81,13 @@ class FragmentCompute:
         ratiomat.scale(1.0 / length1, 1.0 / length2, 1.0)
         self._fbo['frag_coord2ratio'] = ratiomat
 
+        self.extra_textures = []
+
         self._fbo.add_reload_observer(self._populate_fbo)
+        self._populate_fbo(self._fbo)
+    def set_extra_textures(self, textures):
+        self.extra_textures = textures
+        self._fbo.clear()
         self._populate_fbo(self._fbo)
     def texture(self):
         return self._fbo.texture
@@ -112,6 +116,8 @@ class FragmentCompute:
 
     def _populate_fbo(self, fbo):
         with fbo:
+            for index, texture in self.extra_textures:
+                BindTexture(index = index + 1, texture = texture)
             Callback(self._set_blend_mode)
             self._rectangle = Rectangle(size = self._fbo.size)
             Callback(self._unset_blend_mode)
