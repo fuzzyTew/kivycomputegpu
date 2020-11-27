@@ -1,3 +1,4 @@
 *.pyo
 .kivy/
 .launch
+.sw*
