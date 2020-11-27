@@ -2,7 +2,7 @@ from kivy.app import App
 from kivy.logger import Logger, LOG_LEVELS, LoggerHistory
 from kivy.uix.label import Label
 
-from fragmentcompute import FragmentCompute
+from fragmentcompute import FragmentCompute, dataTexture
 
 class WrappingLabel(Label):
     def on_size(self, instance, size):
@@ -23,20 +23,18 @@ class MainApp(App):
             }
         """, 4)
 
-        fg.set_extra_textures([
-            [4, 4, 4, 4,
-             3, 3, 3, 3,
-             2, 2, 2, 2,
-             1, 1, 1, 1]
+        fg['other_tex'] = dataTexture([
+            4, 4, 4, 4,
+            3, 3, 3, 3,
+            2, 2, 2, 2,
+            1, 1, 1, 1
         ])
-        fg['other_tex'] = 1
-
 
 
         data1 = fg.compute().download()
         data2 = fg.compute().download()
 
-        data3 = fg.extra_textures[0].pixels
+        data3 = fg._texture_bindings['other_tex'][1].pixels
 
         lines = [
             fg.texture().size,

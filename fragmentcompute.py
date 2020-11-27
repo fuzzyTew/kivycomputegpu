@@ -49,6 +49,16 @@ header_fs = """
     uniform sampler2D last_tex;
 """
 
+def dataTexture(data, *args, **kwargs):
+    data = b''.join((chr(item) for item in data))
+    size = (len(data) / 4, 1)
+    texture = Texture.create(size = size, *args, **kwargs)
+    def reload(texture):
+        texture.blit_buffer(data, colorfmt = texture.colorfmt)
+    texture.add_reload_observer(reload)
+    reload(texture)
+    return texture
+
 class FragmentCompute:
     def __init__(self, fs, length1, length2 = 1):
         size = (length1, length2)
@@ -81,13 +91,9 @@ class FragmentCompute:
         ratiomat.scale(1.0 / length1, 1.0 / length2, 1.0)
         self._fbo['frag_coord2ratio'] = ratiomat
 
-        self.extra_textures = []
+        self._texture_bindings = {}
 
         self._fbo.add_reload_observer(self._populate_fbo)
-        self._populate_fbo(self._fbo)
-    def set_extra_textures(self, textures):
-        self.extra_textures = textures
-        self._fbo.clear()
         self._populate_fbo(self._fbo)
     def texture(self):
         return self._fbo.texture
@@ -111,18 +117,22 @@ class FragmentCompute:
         self._fbo.draw()
         return self
     def __setitem__(self, name, value):
-        self._fbo[name] = value
-        # if isinstance(value, Texture):
+        if isinstance(value, Texture):
+            if name in self._texture_bindings:
+                index, oldvalue = self._texture_bindings[name]
+            else:
+                index = len(self._texture_bindings) + 1
+            self._texture_bindings[name] = (index, value)
+            self._fbo[name] = index 
+            self._fbo.clear()
+            self._populate_fbo(self._fbo)
+        else:
+            self._fbo[name] = value 
 
     def _populate_fbo(self, fbo):
         with fbo:
-            for index, texture in enumerate(self.extra_textures):
-                if not isinstance(texture, Texture):
-                    data = texture
-                    texture = Texture.create(size = fbo.size)
-                    texture.blit_buffer(b''.join((chr(item) for item in data)), colorfmt = 'rgba')
-                    self.extra_textures[index] = texture
-                BindTexture(index = index + 1, texture = texture)
+            for index, texture in self._texture_bindings.values():
+                BindTexture(index = index, texture = texture)
             Callback(self._set_blend_mode)
             self._rectangle = Rectangle(size = self._fbo.size)
             Callback(self._unset_blend_mode)
