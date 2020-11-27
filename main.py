@@ -12,7 +12,7 @@ class MainApp(App):
     def build(self):
         Logger.setLevel(LOG_LEVELS["info"])
 
-        fg = FragmentCompute(3)
+        fg = FragmentCompute(4)
 
         data1 = fg.compute().download()
         data2 = fg.compute().download()

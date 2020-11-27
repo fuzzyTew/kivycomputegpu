@@ -6,22 +6,44 @@
 # fbo is a rendercontext. so we can likely
 # pass a shader to it
 
-from kivy.graphics import Color, Fbo, Rectangle
-#from kivy.graphics.opengl import glReadPixels
+from kivy.graphics import Callback, Color, Fbo, Rectangle
+import kivy.graphics.opengl as gl
 from kivy.graphics.texture import Texture
 from kivy.graphics.transformation import Matrix
 from kivy.logger import Logger
 
 class FragmentCompute:
     def __init__(self, length1, length2 = 1):
+        size = (length1, length2)
+
+        # it doesn't look like we can use float textures on mobile kivy, but people sometimes interconvert floats with 32bit rgba in shaders.
+        # we would then have 3 shaders or texture rows or such, for x coord, y coord, angle, etc
+
+        #Logger.info('float: ' + str(gl.getExtension('OES_texture_float')))
+        texture = Texture.create(
+            size = size,
+            #bufferfmt = 'float'
+        )
         self._fbo = Fbo(
-            size = (length1, length2),
+            size = size,
+            texture = texture,
             vs = """
-            $HEADER$
+            #ifdef GL_ES
+                precision highp float;
+            #endif
+            
+            /* Outputs to the fragment shader */
+            varying vec2 tex_coord0;
+            
+            /* vertex attributes */
+            attribute vec2     vPosition;
+            attribute vec2     vTexCoords0;
+            
+            /* uniform variables */
+            uniform mat4       projection_mat;
             void main (void) {
-                frag_color = color * vec4(1.0, 1.0, 1.0, opacity);
                 tex_coord0 = vTexCoords0;
-                gl_Position = projection_mat * modelview_mat * vec4(vPosition.xy, 0.0, 1.0);
+                gl_Position = projection_mat * vec4(vPosition.xy, 0.0, 1.0);
             }
             """,
             fs = """
@@ -36,21 +58,21 @@ class FragmentCompute:
             /* uniform texture samplers */
             uniform sampler2D texture0;
 
-            uniform mat4 frag_modelview_mat;
+            /* uniform variables */
             uniform mat4 frag_coord2idx;
             uniform mat4 frag_coord2ratio;
 
             void main (void){
-                //gl_FragColor = frag_color * texture2D(texture0, tex_coord0);
-                vec4 coord = gl_FragCoord.xyzw;
-                vec2 idxs = (frag_coord2idx * coord).xy;
-                vec2 ratios = (frag_coord2ratio * coord).xy;
+                vec2 idxs = (frag_coord2idx * gl_FragCoord).xy;
+                vec2 ratios = (frag_coord2ratio * gl_FragCoord).xy;
                 vec4 lastcol = texture2D(texture0, ratios);
-                coord = vec4(idxs.x, ratios.x, lastcol.b + 0.125, 1.0);//frag_coord2idx * coord;//vec4(idxs.xy, 0.0, 0.0);
-                gl_FragColor = coord;//vec4(coord.xyzw);
-                //gl_FragColor = vec4(gl_FragCoord.x - 0.5,1.0,1.0,1.0);
+                gl_FragColor = vec4(idxs.x, ratios.x, lastcol.b + 0.125, 0.0);
             }
             """)
+
+        # these matrices are to transform
+        # window coordinates into data
+        # coordinates
         centermat = Matrix()
         centermat.translate(-.5,-.5,-.5)
         idxscale = 1.0 / 255.0;
@@ -60,12 +82,18 @@ class FragmentCompute:
         ratiomat = Matrix()
         ratiomat.scale(1.0 / length1, 1.0 / length2, 1.0)
         self._fbo['frag_coord2ratio'] = ratiomat
-        with self._fbo:
-            #self._color = Color(1,1,1,1)
-            self._rectangle = Rectangle(size = self._fbo.size)
+
+        self._fbo.add_reload_observer(self._populate_fbo)
+        self._populate_fbo(self._fbo)
     def texture(self):
         return self._fbo.texture
     def download(self):
+        ## cgl requires cython,
+        ## but glReadPixels is used in
+        ## fbo.py, and could be used to
+        ## get RGB instead of RGBA, since
+        ## A is presently drawn blended,
+        ## and maybe save a memory copy.
         #width, height = self._fbo.size
         #data = array('B', [1] * width * height * 4)
         #self._fbo.bind()
@@ -81,4 +109,17 @@ class FragmentCompute:
     def __setitem__(self, name, value):
         self._fbo[name] = value
         # if isinstance(value, Texture):
+
+    def _populate_fbo(self, fbo):
+        with fbo:
+            Callback(self._set_blend_mode)
+            self._rectangle = Rectangle(size = self._fbo.size)
+            Callback(self._unset_blend_mode)
+    # opaque blend mode provides for use of the alpha channel for data
+    def _set_blend_mode(self, instruction = None):
+        gl.glBlendFunc(gl.GL_ONE, gl.GL_ZERO);
+        gl.glBlendFuncSeparate(gl.GL_ONE, gl.GL_ZERO, gl.GL_ONE, gl.GL_ZERO);
+    def _unset_blend_mode(self, instruction = None):
+        gl.glBlendFunc(gl.GL_SRC_ALPHA, gl.GL_ONE_MINUS_SRC_ALPHA);
+        gl.glBlendFuncSeparate(gl.GL_SRC_ALPHA, gl.GL_ONE_MINUS_SRC_ALPHA, gl.GL_ONE, gl.GL_ONE);
             
