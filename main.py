@@ -14,13 +14,13 @@ class MainApp(App):
 
         fg = FragmentCompute(3)
 
-        fg.compute()
-
-        data = fg.download()
+        data1 = fg.compute().download()
+        data2 = fg.compute().download()
 
         lines = [
             fg.texture().size,
-            [n for n in data],
+            [n for n in data1],
+            [n for n in data2],
         ]
         for item in LoggerHistory.history:
             lines.append(item.getMessage())

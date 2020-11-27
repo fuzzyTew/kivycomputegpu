@@ -8,6 +8,7 @@
 
 from kivy.graphics import Color, Fbo, Rectangle
 #from kivy.graphics.opengl import glReadPixels
+from kivy.graphics.texture import Texture
 from kivy.graphics.transformation import Matrix
 from kivy.logger import Logger
 
@@ -44,7 +45,8 @@ class FragmentCompute:
                 vec4 coord = gl_FragCoord.xyzw;
                 vec2 idxs = (frag_coord2idx * coord).xy;
                 vec2 ratios = (frag_coord2ratio * coord).xy;
-                coord = vec4(idxs.x, ratios.x, 0.0, 1.0);//frag_coord2idx * coord;//vec4(idxs.xy, 0.0, 0.0);
+                vec4 lastcol = texture2D(texture0, ratios);
+                coord = vec4(idxs.x, ratios.x, lastcol.b + 0.125, 1.0);//frag_coord2idx * coord;//vec4(idxs.xy, 0.0, 0.0);
                 gl_FragColor = coord;//vec4(coord.xyzw);
                 //gl_FragColor = vec4(gl_FragCoord.x - 0.5,1.0,1.0,1.0);
             }
@@ -57,10 +59,10 @@ class FragmentCompute:
         self._fbo['frag_coord2idx'] = idxmat.multiply(centermat)
         ratiomat = Matrix()
         ratiomat.scale(1.0 / length1, 1.0 / length2, 1.0)
-        self._fbo['frag_coord2ratio'] = ratiomat#.multiply(centermat)
+        self._fbo['frag_coord2ratio'] = ratiomat
         with self._fbo:
-            Color(1,1,1,1)
-            Rectangle(size = self._fbo.size)
+            #self._color = Color(1,1,1,1)
+            self._rectangle = Rectangle(size = self._fbo.size)
     def texture(self):
         return self._fbo.texture
     def download(self):
@@ -73,5 +75,10 @@ class FragmentCompute:
         #return data
         return bytearray(self._fbo.pixels)
     def compute(self):
+        self._rectangle.texture = self._fbo.texture
         self._fbo.draw()
         return self
+    def __setitem__(self, name, value):
+        self._fbo[name] = value
+        # if isinstance(value, Texture):
+            
