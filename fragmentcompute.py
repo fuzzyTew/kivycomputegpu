@@ -116,7 +116,12 @@ class FragmentCompute:
 
     def _populate_fbo(self, fbo):
         with fbo:
-            for index, texture in self.extra_textures:
+            for index, texture in enumerate(self.extra_textures):
+                if not isinstance(texture, Texture):
+                    data = texture
+                    texture = Texture.create(size = fbo.size)
+                    texture.blit_buffer(b''.join((chr(item) for item in data)), colorfmt = 'rgba')
+                    self.extra_textures[index] = texture
                 BindTexture(index = index + 1, texture = texture)
             Callback(self._set_blend_mode)
             self._rectangle = Rectangle(size = self._fbo.size)
